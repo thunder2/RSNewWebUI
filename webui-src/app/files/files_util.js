@@ -205,7 +205,7 @@ const File = () => {
         });
       }
       return m('.file-view', { style: { display: info.isSearched ? 'block' : 'none' } }, [
-        m('.file-view__heading', [
+        m('.file-view__heading', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start' } }, [
           m('h6', info.fname),
           chunkStrat !== undefined &&
           direction === 'down' && [

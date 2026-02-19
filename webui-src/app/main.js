@@ -37,19 +37,40 @@ const navbar = () => {
         },
         [
           m('.nav-menu__logo', [
-            m('img', {
-              src: 'images/retroshare.svg',
-              alt: 'retroshare_icon',
-            }),
-            m('.nav-menu__logo-text', [
-              m('h5', 'RetroShare'),
-              m('.webui-version-box', [
-                m('span.webui-version', 'v87'),
+            m(
+              '.logo-container',
+              {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  marginRight: '10px',
+                },
+              },
+              [
+                m('img', {
+                  src: 'images/retroshare.svg',
+                  alt: 'retroshare_icon',
+                }),
+                m('i.fas.fa-circle', {
+                  style: {
+                    color: rs.connectionState.status ? '#2ecc71' : '#e74c3c',
+                    fontSize: '0.6em',
+                    marginTop: '5px',
+                    transition: 'color 0.3s ease',
+                  },
+                  title: rs.connectionState.status ? 'Connected to RetroShare Core' : 'Connection Lost',
+                }),
+                m('span.webui-version', { style: { fontSize: '0.7em', marginTop: '3px', color: '#888' } }, 'v108'),
                 m('i.fas.fa-sync-alt.refresh-icon', {
+                  style: { fontSize: '0.8em', marginTop: '2px', cursor: 'pointer', color: '#888' },
                   onclick: () => window.location.reload(true),
                   title: 'Force reload application',
                 }),
-              ]),
+              ]
+            ),
+            m('.nav-menu__logo-text', [
+              m('h5', 'RetroShare'),
             ]),
           ]),
           m('.nav-menu__box', [

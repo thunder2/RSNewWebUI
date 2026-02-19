@@ -149,24 +149,24 @@ const Component = () => {
       Downloads.resetSearch();
     },
     view: () => [
-      m('.widget__body-heading', [
-        m('h3', `Downloads (${Downloads.hashes ? Downloads.hashes.length : 0} files)`),
-        m('.action', [
+      m('.widget__body-heading', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start' } }, [
+        m('.action', { style: { marginBottom: '10px' } }, [
           m('button', { onclick: () => widget.popupMessage(m(NewFileDialog)) }, 'Add new file'),
           m('button', { onclick: clearFileCompleted }, 'Clear completed'),
         ]),
+        m('h3', `Downloads (${Downloads.hashes ? Downloads.hashes.length : 0} files)`),
       ]),
       m('.widget__body-content', [
         Downloads.statusMap &&
-          Object.keys(Downloads.statusMap).map((hash) =>
-            m(util.File, {
-              info: Downloads.statusMap[hash],
-              strategy: Downloads.strategies[hash],
-              direction: 'down',
-              transferred: Downloads.statusMap[hash].transfered.xint64,
-              chunksInfo: Downloads.chunksMap[hash],
-            })
-          ),
+        Object.keys(Downloads.statusMap).map((hash) =>
+          m(util.File, {
+            info: Downloads.statusMap[hash],
+            strategy: Downloads.strategies[hash],
+            direction: 'down',
+            transferred: Downloads.statusMap[hash].transfered.xint64,
+            chunksInfo: Downloads.chunksMap[hash],
+          })
+        ),
       ]),
     ],
   };

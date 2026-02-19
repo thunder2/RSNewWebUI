@@ -96,6 +96,10 @@ function logout() {
   m.route.set('/');
 }
 
+const connectionState = {
+  status: true,
+};
+
 function rsJsonApiRequest(
   path,
   data = {},
@@ -137,12 +141,14 @@ function rsJsonApiRequest(
     })
     .then((result) => {
       if (result.status === 200) {
+        connectionState.status = true;
         try {
           callback(result.body, true);
         } catch (e) {
           console.error('[RS] Error in success callback for path:', path, e);
         }
       } else {
+        connectionState.status = false;
         if (result.status === 401) {
           setKeys(loginKey.username, loginKey.passwd, loginKey.url, false);
           m.route.set('/');
@@ -156,6 +162,7 @@ function rsJsonApiRequest(
       return result;
     })
     .catch(function (e) {
+      connectionState.status = false;
       try {
         callback(e, false);
       } catch (cbErr) {
@@ -204,17 +211,10 @@ const eventQueue = {
         //                #define RS_CHAT_TYPE_PUBLIC  1
         //                #define RS_CHAT_TYPE_PRIVATE 2
 
-        1: (chatId) => {
-          const id = chatId.peer_id;
-          if (typeof id === 'object') return id.xstr64 !== '0' ? id.xstr64 : JSON.stringify(id);
-          return id;
-        }, // RS_CHAT_TYPE_PRIVATE
-        2: (chatId) => {
-          const id = chatId.distant_chat_id;
-          if (typeof id === 'object') return id.xstr64 !== '0' ? id.xstr64 : JSON.stringify(id);
-          return id;
-        }, // RS_CHAT_TYPE_DISTANT
-        3: (chatId) => (typeof chatId.lobby_id === 'object' ? chatId.lobby_id.xstr64 : chatId.lobby_id), // RS_CHAT_TYPE_LOBBY
+        1: (cid) => hexId(cid),
+        2: (cid) => hexId(cid),
+        3: (cid) => hexId(cid),
+        4: (cid) => hexId(cid),
       },
       messages: {},
       chatMessages: (chatId, owner, action) => {
@@ -514,8 +514,32 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+function hexId(id) {
+  if (!id) return '';
+  if (typeof id === 'string') return id;
+  if (typeof id === 'number') return String(id);
+  if (typeof id === 'object') {
+    // 1. Check for xstr64 (64-bit wrapped ID)
+    if (id.xstr64 && id.xstr64 !== '0') return id.xstr64;
+
+    // 2. Search for any hex string of appropriate length (128-bit or 64-bit)
+    const keys = Object.keys(id);
+    for (let i = 0; i < keys.length; i++) {
+      const val = id[keys[i]];
+      if (typeof val === 'string' && val.length >= 16 && val !== '00000000000000000000000000000000') return val;
+      // Search deeper for nested xstr64
+      if (val && typeof val === 'object' && val.xstr64 && val.xstr64 !== '0') return val.xstr64;
+    }
+    // 3. Last resort fallbacks
+    if (id.xstr64 !== undefined) return String(id.xstr64);
+  }
+  return String(id);
+}
+
 module.exports = {
   rsJsonApiRequest,
+  idToHex: hexId,
+  connectionState,
   setKeys,
   setBackgroundTask,
   logon,
