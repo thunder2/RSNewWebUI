@@ -275,22 +275,19 @@ const ChatLobbyModel = {
   setIdentity(lobbyId, nick) {
     rs.rsJsonApiRequest(
       '/rsChats/setIdentityForChatLobby',
-      {
-        lobby_id: { xstr64: lobbyId },
-        nick: nick,
-      },
+      {},
       () => m.route.set('/chat/:lobby', { lobby: lobbyId }),
-      true
+      true,
+      {},
+      JSON.parse,
+      () => '{"lobby_id":' + lobbyId + ',"nick":"' + nick + '"}'
     );
   },
   enterPublicLobby(lobbyId, nick) {
     // Set lobby nickname
     rs.rsJsonApiRequest(
       '/rsChats/joinVisibleChatLobby',
-      {
-        lobby_id: { xstr64: lobbyId },
-        own_id: nick,
-      },
+      {},
       () => {
         loadLobbyDetails(lobbyId, (info) => {
           ChatRoomsModel.subscribedRooms[lobbyId] = info;
@@ -306,16 +303,16 @@ const ChatLobbyModel = {
     // Unsubscribe
     rs.rsJsonApiRequest(
       '/rsChats/unsubscribeChatLobby',
-      {
-        id: { xstr64: lobbyId },
-      },
+      {},
       (data, success) => {
         if (success) {
-          if (follow) {
-            follow();
-          }
+          ChatRoomsModel.loadSubscribedRooms(follow);
         }
-      }
+      },
+      true,
+      {},
+      JSON.parse,
+      () => '{"lobby_id":' + lobbyId + '}'
     );
   },
   chatId() {
@@ -438,12 +435,21 @@ const ChatLobbyModel = {
 
     rs.rsJsonApiRequest(
       '/rsChats/sendChat',
-      {
-        id: cid,
-        msg: msg,
-      },
+      {},
       (data, success) => {
         if (success) {
+          // adding own message to log
+          rs.events[15].handler(
+            {
+              mChatMessage: {
+                chat_id: this.chatId(),
+                msg,
+                sendTime: new Date().getTime() / 1000,
+                lobby_peer_gxs_id: this.currentLobby.gxs_id,
+              },
+            },
+            rs.events[15]
+          );
           onsuccess();
         }
       }

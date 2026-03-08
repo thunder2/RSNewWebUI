@@ -5,7 +5,7 @@ const widget = require('widgets');
 const peopleUtil = require('people/people_util');
 const compose = require('mail/mail_compose');
 
-// rsmsgs.h
+// rsmail.h
 const RS_MSG_BOXMASK = 0x000f;
 
 const RS_MSG_INBOX = 0x00;

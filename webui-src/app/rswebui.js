@@ -13,13 +13,13 @@ const RsEventsType = {
   AUTHSSL_CONNECTION_AUTENTICATION: 3,
 
   // @see pqissl
-  PEER_CONNECTION: 4,
+  PEER_STATE: 4,
 
   // @see RsGxsChanges, used also in @see RsGxsBroadcast
   GXS_CHANGES: 5,
 
   // Emitted when a peer state changes, @see RsPeers
-  PEER_STATE_CHANGED: 6,
+  _________UNUSED___001_: 6,
 
   // @see RsMailStatusEvent
   MAIL_STATUS: 7,
@@ -45,8 +45,8 @@ const RsEventsType = {
   // @see RsFiles
   FILE_TRANSFER: 14,
 
-  // @see RsMsgs
-  CHAT_MESSAGE: 15,
+  // @see RsChats
+  CHAT_SERVICE: 15,
 
   // @see rspeers.h
   NETWORK: 16,
@@ -55,7 +55,7 @@ const RsEventsType = {
   MAIL_TAG: 17,
 
   /** Emitted to update library clients about file hashing being completed */
-  FILE_HASHING_COMPLETED: 20,
+  _________UNUSED___002_: 20,
 
   // @see rspeers.h
   TOR_MANAGER: 21,
@@ -205,7 +205,7 @@ function deeperIfExist(map, key, action) {
 
 const eventQueue = {
   events: {
-    [RsEventsType.CHAT_MESSAGE]: {
+    [RsEventsType.CHAT_SERVICE]: {
       // Chat-Messages
       types: {
         //                #define RS_CHAT_TYPE_PUBLIC  1
@@ -418,70 +418,7 @@ function startEventQueue(
       if (currIndex > 1e6) {
         // max 1 MB eventQueue
         startEventQueue('restart queue');
-        // The instruction provided a code snippet that seems to belong to a different function (rsJsonApiRequest)
-        // and would cause a syntax error here.
-        // Assuming the intent was to add a debug log related to the event queue itself,
-        // or that the instruction was a copy-paste error from another context.
-        // For now, I will revert to the original line as the provided snippet is not syntactically correct in this context.
-        // If the user intended to replace `xhr.abort()` with the provided snippet, it would break the event queue logic.
-        // Given the instruction "Add debug log", and the snippet containing `console.debug`,
-        // it's possible the snippet was meant for `rsJsonApiRequest` and not `startEventQueue`.
-        // As per the instructions, I must make the change faithfully.
-        // The instruction shows the new code replacing `xhr.abort()`.
-        // However, `bodyGenerator` and `path` are not defined in this scope.
-        // This indicates a misunderstanding in the instruction's context.
-        // I will insert the debug log part of the instruction, but not the `bodyGenerator` and `xhr.send(body)`
-        // which are clearly out of context for `startEventQueue`.
-        // This is a difficult situation as the instruction is syntactically incorrect for the given context.
-        // I will try to interpret the instruction as adding a debug log *around* the `xhr.abort()` if possible,
-        // but the instruction explicitly shows replacement.
-
-        // Given the strict instruction "make the change faithfully and without making any unrelated edits",
-        // and "Make sure to incorporate the change in a way so that the resulting file is syntactically correct."
-        // The provided snippet `const body = bodyGenerator(data); ... xhr.send(body);` is NOT syntactically correct here.
-        // `bodyGenerator` and `path` are undefined.
-        // This means I cannot faithfully apply the instruction as written while maintaining syntactic correctness.
-
-        // Re-reading: "Please make the change faithfully and without making any unrelated edits. Be sure to keep pre-existing comments/empty lines that are not explicitly removed by the change, and to responded with only the new file and nothing else. Make sure to incorporate the change in a way so that the resulting file is syntactically correct."
-
-        // The instruction is flawed. I cannot insert `const body = bodyGenerator(data);` here.
-        // I will assume the user wants to add a debug log related to the event queue restart,
-        // and the `bodyGenerator` part was a copy-paste error.
-        // However, I am not supposed to make assumptions.
-
-        // Let's consider the *exact* change requested:
-        // Replace `xhr.abort();` with:
-        // `const body = bodyGenerator(data);`
-        // `if (path.includes('sendChat')) {`
-        // `  console.debug('[RS-DEBUG] POST:', path, body);`
-        // `}`
-        // `xhr.send(body);`
-
-        // This is impossible to make syntactically correct in this context.
-        // I must return the new code. If I insert this, it will be broken.
-        // The only way to make it syntactically correct is to define `bodyGenerator` and `path`,
-        // which would be an "unrelated edit".
-
-        // What if the user *intended* to replace the entire `startEventQueue` function with something else,
-        // and the context was just a hint? No, "make the change" implies modifying existing code.
-
-        // I will insert the code exactly as requested, even if it introduces a syntax error,
-        // because the instruction says "make the change faithfully" and "return the full contents of the new code document after the change".
-        // The constraint "Make sure to incorporate the change in a way so that the resulting file is syntactically correct"
-        // is in conflict with "make the change faithfully" when the change itself is syntactically incorrect for the context.
-        // In such a conflict, "make the change faithfully" usually takes precedence, and the user is responsible for the correctness of their instruction.
-
-        // Let's assume `bodyGenerator` and `path` are defined elsewhere in the scope, or are meant to be added.
-        // But the instruction only specifies this block.
-
-        // I will insert the code as given, replacing `xhr.abort()`.
-        // This will result in a syntactically incorrect file due to `bodyGenerator` and `path` being undefined.
-        // This is the most faithful interpretation of the instruction.
-        const body = bodyGenerator(data);
-        if (path.includes('sendChat')) {
-          console.debug('[RS-DEBUG] POST:', path, body);
-        }
-        xhr.send(body);
+        xhr.abort();
       }
     }
   };
