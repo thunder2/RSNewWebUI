@@ -36,7 +36,11 @@ function loadSharedDirectories() {
 // Update Shared Directories when there is a corresponding event
 rs.events[rs.RsEventsType.SHARED_DIRECTORIES] = {
   handler: (event) => {
-    loadSharedDirectories();
+    switch (event.mEventCode) {
+      case futil.RsSharedDirectoriesEventCode.SHARED_DIRS_LIST_CHANGED:
+        loadSharedDirectories();
+        break;
+    }
   },
 };
 

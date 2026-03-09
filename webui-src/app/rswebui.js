@@ -149,7 +149,7 @@ function rsJsonApiRequest(
         }
       } else {
         connectionState.status = false;
-        if (result.status === 401) {
+        if (result.status === 401 || result.status === 403) {
           setKeys(loginKey.username, loginKey.passwd, loginKey.url, false);
           m.route.set('/');
         }
