@@ -54,6 +54,7 @@ const Layout = () => {
     view: (vnode) =>
       m('.widget', [
         m('.top-heading', [
+          vnode.attrs.pathInfo.tab === 'MyForums' &&
           m(
             'button',
             {
