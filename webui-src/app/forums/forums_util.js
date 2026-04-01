@@ -27,7 +27,19 @@ function getTimestampValue(ts) {
   return ts;
 }
 
-async function updatedisplayforums(keyid, details = {}) {
+function formatTimestamp(ts) {
+  const val = getTimestampValue(ts);
+  if (!val || val === 0) return '???';
+  try {
+    const localDate = new Date(val * 1000);
+    const offset = localDate.getTimezoneOffset() * 60000;
+    return new Date(localDate.getTime() - offset).toISOString().replace('T', ' ').slice(0, 16);
+  } catch (e) {
+    return 'Invalid Date';
+  }
+}
+
+async function updatedisplayforums(keyid) {
   if (Data.loading.has(keyid)) return;
   Data.loading.add(keyid);
 
@@ -36,25 +48,25 @@ async function updatedisplayforums(keyid, details = {}) {
       forumIds: [keyid], // keyid: Forumid
     });
     if (res1 && res1.body && res1.body.retval && res1.body.forumsInfo && res1.body.forumsInfo.length > 0) {
-      const details = res1.body.forumsInfo[0];
+      const forumInfo = res1.body.forumsInfo[0];
       Data.DisplayForums[keyid] = {
         // struct for a forum
-        name: details.mMeta.mGroupName,
-        author: details.mMeta.mAuthorId,
+        name: forumInfo.mMeta.mGroupName,
+        author: forumInfo.mMeta.mAuthorId,
         isSearched: true,
-        description: details.mDescription,
+        description: forumInfo.mDescription,
         isSubscribed:
-          details.mMeta.mSubscribeFlags === GROUP_SUBSCRIBE_SUBSCRIBED ||
-          details.mMeta.mSubscribeFlags === GROUP_MY_FORUM,
-        activity: details.mMeta.mLastPost,
-        created: details.mMeta.mPublishTs,
+          forumInfo.mMeta.mSubscribeFlags === GROUP_SUBSCRIBE_SUBSCRIBED ||
+          forumInfo.mMeta.mSubscribeFlags === GROUP_MY_FORUM,
+        activity: forumInfo.mMeta.mLastPost,
+        created: forumInfo.mMeta.mPublishTs,
       };
       if (Data.Threads[keyid] === undefined) {
         Data.Threads[keyid] = {};
       }
 
       const res2 = await rs.rsJsonApiRequest('/rsgxsforums/getForumPostsHierarchy', {
-        group: details,
+        group: forumInfo,
       });
 
       if (res2 && res2.body && res2.body.vect) {
@@ -268,6 +280,8 @@ module.exports = {
   popupmessage,
   updatedisplayforums,
   loadPostContent,
+  getTimestampValue,
+  formatTimestamp,
   GROUP_SUBSCRIBE_ADMIN,
   GROUP_SUBSCRIBE_NOT_SUBSCRIBED,
   GROUP_SUBSCRIBE_PUBLISH,

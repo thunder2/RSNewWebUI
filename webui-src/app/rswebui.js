@@ -68,10 +68,10 @@ const RsEventsType = {
 
 const API_URL = 'http://127.0.0.1:9092';
 const loginKey = {
-  username: localStorage.getItem('rs_username') || '',
-  passwd: localStorage.getItem('rs_passwd') || '',
-  isVerified: localStorage.getItem('rs_isVerified') === 'true',
-  url: localStorage.getItem('rs_url') || API_URL,
+  username: sessionStorage.getItem('rs_username') || '',
+  passwd: sessionStorage.getItem('rs_passwd') || '',
+  isVerified: sessionStorage.getItem('rs_isVerified') === 'true',
+  url: sessionStorage.getItem('rs_url') || API_URL,
 };
 
 // Make this as object property?
@@ -82,12 +82,12 @@ function setKeys(username, password, url = API_URL, verified = true) {
   loginKey.isVerified = verified;
 
   if (verified) {
-    localStorage.setItem('rs_username', username);
-    localStorage.setItem('rs_passwd', password);
-    localStorage.setItem('rs_url', url);
-    localStorage.setItem('rs_isVerified', 'true');
+    sessionStorage.setItem('rs_username', username);
+    sessionStorage.setItem('rs_passwd', password);
+    sessionStorage.setItem('rs_url', url);
+    sessionStorage.setItem('rs_isVerified', 'true');
   } else {
-    localStorage.removeItem('rs_isVerified');
+    sessionStorage.removeItem('rs_isVerified');
   }
 }
 
@@ -152,6 +152,10 @@ function rsJsonApiRequest(
         if (result.status === 401 || result.status === 403) {
           setKeys(loginKey.username, loginKey.passwd, loginKey.url, false);
           m.route.set('/');
+        } else if (result.status === 0) {
+          console.error('[RS] Retroshare-jsonapi not available.');
+        } else {
+          console.error('[RS] HTTP error:', result.status, result.statusText);
         }
         try {
           callback(result, false);
@@ -427,6 +431,11 @@ function startEventQueue(
 
   xhr.onerror = (err) => {
     console.error('[RS] Event Queue XHR error occurred:', err);
+    // Retry after 5 seconds to avoid silent event loss
+    setTimeout(() => {
+      console.log('[RS] Retrying event queue connection...');
+      startEventQueue(info, loginHeader, displayAuthError, displayErrorMessage, successful);
+    }, 5000);
   };
 
   // We need to send an eventType to registerEventsHandler

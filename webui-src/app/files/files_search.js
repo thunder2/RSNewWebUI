@@ -53,8 +53,7 @@ const getFileIcon = (fileName) => {
     case 'flac': return 'i.fas.fa-file-audio';
     case 'txt':
     case 'doc':
-    case 'docx':
-    case 'pdf': return 'i.fas.fa-file-alt';
+    case 'docx': return 'i.fas.fa-file-alt';
     default: return 'i.fas.fa-file';
   }
 };

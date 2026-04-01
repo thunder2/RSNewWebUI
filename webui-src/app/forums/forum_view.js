@@ -2,7 +2,7 @@ const m = require('mithril');
 const rs = require('rswebui');
 const util = require('forums/forums_util');
 const peopleUtil = require('people/people_util');
-const { updatedisplayforums, loadPostContent } = require('./forums_util');
+const { updatedisplayforums, loadPostContent, getTimestampValue, formatTimestamp } = require('./forums_util');
 
 function createforum() {
   let title;
@@ -36,8 +36,8 @@ function createforum() {
               m(
                 'option',
                 { value: o },
-                rs.userList.userMap[o]
-                  ? rs.userList.userMap[o].toLocaleString() + ' (' + o.slice(0, 8) + '...)'
+                rs.userList.username(o)
+                  ? rs.userList.username(o) + ' (' + o.slice(0, 8) + '...)'
                   : 'No Signature'
               )
             ),
@@ -95,7 +95,7 @@ const EditThread = () => {
           },
           [
             'Identity: ',
-            m('h5[id=authid]', rs.userList.userMap[vnode.attrs.authorId].toLocaleString()),
+            m('h5[id=authid]', rs.userList.username(vnode.attrs.authorId)),
           ]
         ),
         m(
@@ -179,7 +179,7 @@ const AddThread = () => {
               m(
                 'option',
                 { value: o },
-                rs.userList.userMap[o].toLocaleString() + ' (' + o.slice(0, 8) + '...)'
+                rs.userList.username(o) + ' (' + o.slice(0, 8) + '...)'
               )
             ),
           ]
@@ -226,28 +226,7 @@ const AddThread = () => {
   };
 };
 
-function getTimestampValue(ts) {
-  if (!ts) return 0;
-  if (typeof ts === 'object') {
-    if (ts.xint64 !== undefined) return ts.xint64;
-    if (ts.xstr64 !== undefined) return Number(ts.xstr64);
-    return 0;
-  }
-  return ts;
-}
-
-function formatTimestamp(ts) {
-  const val = getTimestampValue(ts);
-  if (!val || val === 0) return '???';
-  try {
-    const localDate = new Date(val * 1000);
-    // Format to YYYY-MM-DD HH:mm in local time
-    const offset = localDate.getTimezoneOffset() * 60000;
-    return new Date(localDate.getTime() - offset).toISOString().replace('T', ' ').slice(0, 16);
-  } catch (e) {
-    return 'Invalid Date';
-  }
-}
+// getTimestampValue and formatTimestamp are imported from forums_util.js
 
 function displaythread() {
   // recursive function to display all the threads

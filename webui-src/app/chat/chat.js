@@ -445,7 +445,7 @@ const ChatLobbyModel = {
       chat_id: cid,
       msg: msg,
       sendTime: Math.floor(Date.now() / 1000),
-      lobby_peer_gxs_id: this.lobby_user,
+      lobby_peer_gxs_id: this.currentLobby.gxs_id,
     };
     this.addMessages([echoMsg], true);
 
@@ -458,6 +458,9 @@ const ChatLobbyModel = {
       (data, success) => {
         if (success) {
           onsuccess();
+        } else {
+          console.error('[RS] Failed to send chat message');
+          onsuccess(); // Clear the input even on failure to avoid stuck 'sending...' state
         }
       }
     );
