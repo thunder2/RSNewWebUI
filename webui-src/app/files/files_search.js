@@ -15,7 +15,7 @@ function handleSubmit() {
       reqObj['_' + res.body.retval] = matchString;
       currentItem = '_' + res.body.retval;
     })
-    .catch((error) => console.log(error));
+    .catch((error) => { });
 }
 
 const SearchBar = () => {
@@ -29,6 +29,33 @@ const SearchBar = () => {
         m('button[type=submit]', m('i.fas.fa-search')),
       ]),
   };
+};
+
+const getFileIcon = (fileName) => {
+  const ext = fileName.split('.').pop().toLowerCase();
+  switch (ext) {
+    case 'pdf': return 'i.fas.fa-file-pdf';
+    case 'zip':
+    case 'rar':
+    case 'tar':
+    case 'gz':
+    case '7z': return 'i.fas.fa-file-archive';
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif': return 'i.fas.fa-file-image';
+    case 'mp4':
+    case 'mkv':
+    case 'avi':
+    case 'mov': return 'i.fas.fa-file-video';
+    case 'mp3':
+    case 'wav':
+    case 'flac': return 'i.fas.fa-file-audio';
+    case 'txt':
+    case 'doc':
+    case 'docx': return 'i.fas.fa-file-alt';
+    default: return 'i.fas.fa-file';
+  }
 };
 
 const Layout = () => {
@@ -54,7 +81,7 @@ const Layout = () => {
         );
       })
       .catch((error) => {
-        console.log('error in sending download request: ', error);
+        // console.log('error in sending download request: ', error);
       });
   }
   return {
@@ -63,58 +90,76 @@ const Layout = () => {
       m('.widget__body', [
         m('div.file-search-container', [
           m('div.file-search-container__keywords', [
-            m('h5.bold', 'Keywords'),
-            Object.keys(reqObj).length !== 0 &&
+            m('.keywords-header', [
+              m('h5.bold', 'Keywords'),
               m(
-                'div.keywords-container',
-                Object.keys(reqObj)
-                  .reverse()
-                  .map((item, index) => {
-                    return m(
-                      m.route.Link,
-                      {
-                        class: active === index ? 'selected' : '',
-                        onclick: () => {
-                          active = index;
-                          currentItem = item;
-                        },
-                        href: `/files/search/${item}`,
-                      },
-                      reqObj[item]
-                    );
-                  })
+                'button.red.clear-btn',
+                {
+                  onclick: () => {
+                    Object.keys(reqObj).forEach((key) => delete reqObj[key]);
+                    Object.keys(fproxy.fileProxyObj).forEach((key) => delete fproxy.fileProxyObj[key]);
+                    currentItem = 0;
+                    active = 0;
+                  },
+                },
+                'Clear'
               ),
+            ]),
+            Object.keys(reqObj).length !== 0 &&
+            m(
+              'div.keywords-container',
+              Object.keys(reqObj)
+                .reverse()
+                .map((item, index) => {
+                  return m(
+                    m.route.Link,
+                    {
+                      class: active === index ? 'selected' : '',
+                      onclick: () => {
+                        active = index;
+                        currentItem = item;
+                      },
+                      href: `/files/search/${item}`,
+                    },
+                    reqObj[item]
+                  );
+                })
+            ),
           ]),
           m('div.file-search-container__results', [
-            Object.keys(fproxy.fileProxyObj).length === 0
+            Object.keys(fproxy.fileProxyObj).length === 0 || currentItem === 0
               ? m('h5.bold', 'Results')
-              : m('table.results-container', [
-                  m(
-                    'thead.results-header',
-                    m('tr', [
-                      m('th', 'Name'),
-                      m('th', 'Size'),
-                      m('th', 'Hash'),
-                      m('th', 'Download'),
-                    ])
-                  ),
-                  m(
-                    'tbody.results',
-                    fproxy.fileProxyObj[currentItem.slice(1)]
-                      ? fproxy.fileProxyObj[currentItem.slice(1)].map((item) =>
-                          m('tr', [
-                            m('td.results__name', [m('i.fas.fa-file'), m('span', item.fName)]),
-                            m('td.results__size', rs.formatBytes(item.fSize.xint64)),
-                            m('td.results__hash', item.fHash),
-                            m(
-                              'td.results__download',
-                              m('button', { onclick: () => handleFileDownload(item) }, 'Download')
-                            ),
-                          ])
-                        )
-                      : 'No Results.'
-                  ),
-                ]),
+              : m('div.results-container', [
+                m(
+                  'div.results-header',
+                  m('.results-row', [
+                    m('.results-cell.name-col', 'Name'),
+                    m('.results-cell.size-col', 'Size'),
+                    m('.results-cell.hash-col', 'Hash'),
+                    m('.results-cell.action-col', 'Download'),
+                  ])
+                ),
+                m(
+                  'div.results-list',
+                  fproxy.fileProxyObj[currentItem.slice(1)]
+                    ? fproxy.fileProxyObj[currentItem.slice(1)].map((item) =>
+                      m('div.results-row.file-item', [
+                        m('.results-cell.name-col', [m(getFileIcon(item.fName)), m('span', item.fName)]),
+                        m('.results-cell.size-col', rs.formatBytes((item.fSize && (item.fSize.xint64 || item.fSize.xstr64)) || 0)),
+                        m('.results-cell.hash-col', item.fHash),
+                        m(
+                          '.results-cell.action-col',
+                          m(
+                            'button.download-btn-v65',
+                            { onclick: () => handleFileDownload(item) },
+                            'Download'
+                          )
+                        ),
+                      ])
+                    )
+                    : 'No Results.'
+                ),
+              ]),
           ]),
         ]),
       ]),

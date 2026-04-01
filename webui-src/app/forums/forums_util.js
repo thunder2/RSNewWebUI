@@ -14,74 +14,164 @@ const Data = {
   Threads: {},
   ParentThreads: {},
   ParentThreadMap: {},
+  loading: new Set(),
 };
 
-async function updatedisplayforums(keyid, details = {}) {
-  const res = await rs.rsJsonApiRequest('/rsgxsforums/getForumsInfo', {
-    forumIds: [keyid], // keyid: Forumid
-  });
-  details = res.body.forumsInfo[0];
-  Data.DisplayForums[keyid] = {
-    // struct for a forum
-    name: details.mMeta.mGroupName,
-    author: details.mMeta.mAuthorId,
-    isSearched: true,
-    description: details.mDescription,
-    isSubscribed:
-      details.mMeta.mSubscribeFlags === GROUP_SUBSCRIBE_SUBSCRIBED ||
-      details.mMeta.mSubscribeFlags === GROUP_MY_FORUM,
-    activity: details.mMeta.mLastPost,
-    created: details.mMeta.mPublishTs,
-  };
-  if (Data.Threads[keyid] === undefined) {
-    Data.Threads[keyid] = {};
+function getTimestampValue(ts) {
+  if (!ts) return 0;
+  if (typeof ts === 'object') {
+    if (ts.xint64 !== undefined) return ts.xint64;
+    if (ts.xstr64 !== undefined) return Number(ts.xstr64);
+    return 0;
   }
-  const res2 = await rs.rsJsonApiRequest('/rsgxsforums/getForumMsgMetaData', {
-    forumId: keyid,
-  });
-  if (res2.body.retval) {
-    res2.body.msgMetas.map(async (thread) => {
-      const res3 = await rs.rsJsonApiRequest('/rsgxsforums/getForumContent', {
-        forumId: keyid,
-        msgsIds: [thread.mMsgId],
+  return ts;
+}
+
+function formatTimestamp(ts) {
+  const val = getTimestampValue(ts);
+  if (!val || val === 0) return '???';
+  try {
+    const localDate = new Date(val * 1000);
+    const offset = localDate.getTimezoneOffset() * 60000;
+    return new Date(localDate.getTime() - offset).toISOString().replace('T', ' ').slice(0, 16);
+  } catch (e) {
+    return 'Invalid Date';
+  }
+}
+
+async function updatedisplayforums(keyid) {
+  if (Data.loading.has(keyid)) return;
+  Data.loading.add(keyid);
+
+  try {
+    const res1 = await rs.rsJsonApiRequest('/rsgxsforums/getForumsInfo', {
+      forumIds: [keyid], // keyid: Forumid
+    });
+    if (res1 && res1.body && res1.body.retval && res1.body.forumsInfo && res1.body.forumsInfo.length > 0) {
+      const forumInfo = res1.body.forumsInfo[0];
+      Data.DisplayForums[keyid] = {
+        // struct for a forum
+        name: forumInfo.mMeta.mGroupName,
+        author: forumInfo.mMeta.mAuthorId,
+        isSearched: true,
+        description: forumInfo.mDescription,
+        isSubscribed:
+          forumInfo.mMeta.mSubscribeFlags === GROUP_SUBSCRIBE_SUBSCRIBED ||
+          forumInfo.mMeta.mSubscribeFlags === GROUP_MY_FORUM,
+        activity: forumInfo.mMeta.mLastPost,
+        created: forumInfo.mMeta.mPublishTs,
+      };
+      if (Data.Threads[keyid] === undefined) {
+        Data.Threads[keyid] = {};
+      }
+
+      const res2 = await rs.rsJsonApiRequest('/rsgxsforums/getForumPostsHierarchy', {
+        group: forumInfo,
       });
 
-      if (
-        res3.body.retval &&
-        (Data.Threads[keyid][thread.mOrigMsgId] === undefined ||
-          Data.Threads[keyid][thread.mOrigMsgId].thread.mMeta.mPublishTs.xint64 <
-            thread.mPublishTs.xint64)
-        // here we get the latest edited thread for each thread by comparing the publish time
-      ) {
-        Data.Threads[keyid][thread.mOrigMsgId] = { thread: res3.body.msgs[0], showReplies: false };
-        if (
-          Data.Threads[keyid][thread.mOrigMsgId] &&
-          Data.Threads[keyid][thread.mOrigMsgId].thread.mMeta.mMsgStatus === THREAD_UNREAD
-        ) {
-          let parent = Data.Threads[keyid][thread.mOrigMsgId].thread.mMeta.mParentId;
-          while (Data.Threads[keyid][parent]) {
-            // to mark all parent threads of an inread thread
-            Data.Threads[keyid][parent].thread.mMeta.mMsgStatus = THREAD_UNREAD;
-            parent = Data.Threads[keyid][parent].thread.mMeta.mParentId;
-          }
-        }
+      if (res2 && res2.body && res2.body.vect) {
+        const vect = res2.body.vect;
+        // Index 0 is the root sentinel in GXS hierarchy
+        const rootSentinel = vect[0];
 
-        if (Data.ParentThreads[keyid] === undefined) {
+        if (rootSentinel && rootSentinel.mChildren) {
           Data.ParentThreads[keyid] = {};
-        }
-        if (thread.mThreadId === thread.mParentId) {
-          // top level thread.
-          Data.ParentThreads[keyid][thread.mOrigMsgId] =
-            Data.Threads[keyid][thread.mOrigMsgId].thread.mMeta;
-        } else {
-          if (Data.ParentThreadMap[thread.mParentId] === undefined) {
-            Data.ParentThreadMap[thread.mParentId] = {};
-          }
-          Data.ParentThreadMap[thread.mParentId][thread.mOrigMsgId] = thread;
+          rootSentinel.mChildren.forEach((topIndex) => {
+            const EntryToThread = (entryIndex) => {
+              const entry = vect[entryIndex];
+              const replies = {};
+
+              // Map ForumPostEntry to a structure compatible with the existing UI
+              const meta = {
+                mGroupId: keyid,
+                mMsgId: entry.mMsgId,
+                mOrigMsgId: entry.mMsgId,
+                mThreadId: entry.mMsgId,
+                mParentId:
+                  entry.mParent !== 0
+                    ? vect[entry.mParent].mMsgId
+                    : '00000000000000000000000000000000',
+                mAuthorId: entry.mAuthorId,
+                mMsgName: entry.mTitle,
+                mPublishTs: entry.mPublishTs,
+                mMostRecentTsInThread: getTimestampValue(entry.mPublishTs),
+                mMsgStatus: entry.mMsgStatus,
+              };
+
+              // Populate ParentThreadMap for compatibility
+              if (meta.mParentId !== '00000000000000000000000000000000') {
+                if (!Data.ParentThreadMap[meta.mParentId]) Data.ParentThreadMap[meta.mParentId] = {};
+                Data.ParentThreadMap[meta.mParentId][meta.mMsgId] = meta;
+              }
+
+              const threadStruct = {
+                thread: { mMeta: meta, mMsg: null },
+                replies: replies,
+                showReplies: false,
+              };
+
+              // Add to flat map
+              Data.Threads[keyid][meta.mMsgId] = threadStruct;
+
+              if (entry.mChildren) {
+                entry.mChildren.forEach((childIndex) => {
+                  const childThread = EntryToThread(childIndex);
+                  replies[childThread.thread.mMeta.mMsgId] = childThread;
+                  const childTs = childThread.thread.mMeta.mMostRecentTsInThread || 0;
+                  if (childTs > meta.mMostRecentTsInThread) meta.mMostRecentTsInThread = childTs;
+                });
+              }
+
+              return threadStruct;
+            };
+
+            const topThread = EntryToThread(topIndex);
+            Data.ParentThreads[keyid][topThread.thread.mMeta.mMsgId] = topThread.thread.mMeta;
+          });
         }
       }
-    });
+      m.redraw();
+    }
+  } catch (e) {
+    console.error('[RS] Error updating forum display for:', keyid, e);
+  } finally {
+    Data.loading.delete(keyid);
+    m.redraw(); // Final redraw just in case
   }
+}
+
+/**
+ * Load the body (mMsg) of a single forum post on demand.
+ * Returns a Promise that resolves to the body string, or null on failure.
+ */
+async function loadPostContent(forumId, msgId) {
+  // If body is already loaded, return it immediately
+  if (
+    Data.Threads[forumId] &&
+    Data.Threads[forumId][msgId] &&
+    Data.Threads[forumId][msgId].thread.mMsg !== null
+  ) {
+    return Data.Threads[forumId][msgId].thread.mMsg;
+  }
+
+  try {
+    const res = await rs.rsJsonApiRequest('/rsgxsforums/getForumContent', {
+      forumId: forumId,
+      msgsIds: [msgId],
+    });
+    if (res && res.body && res.body.retval && res.body.msgs && res.body.msgs.length > 0) {
+      const body = res.body.msgs[0].mMsg;
+      // Cache the body in the existing thread entry
+      if (Data.Threads[forumId] && Data.Threads[forumId][msgId]) {
+        Data.Threads[forumId][msgId].thread.mMsg = body;
+      }
+      m.redraw();
+      return body;
+    }
+  } catch (e) {
+    console.error('[RS] Error loading post content:', forumId, msgId, e);
+  }
+  return null;
 }
 
 const DisplayForumsFromList = () => {
@@ -114,7 +204,7 @@ const ForumSummary = () => {
       keyid = v.attrs.details.mGroupId;
       updatedisplayforums(keyid);
     },
-    view: (v) => {},
+    view: (v) => { },
   };
 };
 
@@ -125,26 +215,18 @@ const ForumTable = () => {
 };
 const ThreadsTable = () => {
   return {
-    oninit: (v) => {},
+    oninit: (v) => { },
     view: (v) =>
       m('table.threads', [
-        m('tr', [m('th', 'Comment'), m('th', 'Date'), m('th', 'Author')]),
         v.children,
       ]),
   };
 };
 const ThreadsReplyTable = () => {
   return {
-    oninit: (v) => {},
+    oninit: (v) => { },
     view: (v) =>
       m('table.threadreply', [
-        m('tr', [
-          m('th', ''),
-          m('th', 'Comment'),
-          m('th', 'Unread'),
-          m('th', 'Author'),
-          m('th', 'Date'),
-        ]),
         v.children,
       ]),
   };
@@ -197,6 +279,9 @@ module.exports = {
   ThreadsReplyTable,
   popupmessage,
   updatedisplayforums,
+  loadPostContent,
+  getTimestampValue,
+  formatTimestamp,
   GROUP_SUBSCRIBE_ADMIN,
   GROUP_SUBSCRIBE_NOT_SUBSCRIBED,
   GROUP_SUBSCRIBE_PUBLISH,

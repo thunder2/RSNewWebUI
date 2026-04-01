@@ -68,10 +68,10 @@ const RsEventsType = {
 
 const API_URL = 'http://127.0.0.1:9092';
 const loginKey = {
-  username: '',
-  passwd: '',
-  isVerified: false,
-  url: API_URL,
+  username: sessionStorage.getItem('rs_username') || '',
+  passwd: sessionStorage.getItem('rs_passwd') || '',
+  isVerified: sessionStorage.getItem('rs_isVerified') === 'true',
+  url: sessionStorage.getItem('rs_url') || API_URL,
 };
 
 // Make this as object property?
@@ -80,12 +80,30 @@ function setKeys(username, password, url = API_URL, verified = true) {
   loginKey.passwd = password;
   loginKey.url = url;
   loginKey.isVerified = verified;
+
+  if (verified) {
+    sessionStorage.setItem('rs_username', username);
+    sessionStorage.setItem('rs_passwd', password);
+    sessionStorage.setItem('rs_url', url);
+    sessionStorage.setItem('rs_isVerified', 'true');
+  } else {
+    sessionStorage.removeItem('rs_isVerified');
+  }
 }
+
+function logout() {
+  setKeys('', '', loginKey.url, false);
+  m.route.set('/');
+}
+
+const connectionState = {
+  status: true,
+};
 
 function rsJsonApiRequest(
   path,
   data = {},
-  callback = () => {},
+  callback = () => { },
   async = true,
   headers = {},
   handleDeserialize = JSON.parse,
@@ -94,7 +112,9 @@ function rsJsonApiRequest(
 ) {
   headers['Accept'] = 'application/json';
   if (loginKey.isVerified) {
-    headers['Authorization'] = 'Basic ' + btoa(loginKey.username + ':' + loginKey.passwd);
+    if (loginKey.username && loginKey.passwd) {
+      headers['Authorization'] = 'Basic ' + btoa(loginKey.username + ':' + loginKey.passwd);
+    }
   }
   // NOTE: After upgrading to mithrilv2, options.extract is no longer required
   // since the status will become part of return value and then
@@ -117,23 +137,42 @@ function rsJsonApiRequest(
       headers,
       body: data,
 
-      config,
+      xhr: config,
     })
     .then((result) => {
       if (result.status === 200) {
-        callback(result.body, true);
+        connectionState.status = true;
+        try {
+          callback(result.body, true);
+        } catch (e) {
+          console.error('[RS] Error in success callback for path:', path, e);
+        }
       } else {
-        if(result.status === 403 || result.status === 401)
-          loginKey.isVerified = false;
-        callback(result, false);
-        m.route.set('/');
+        connectionState.status = false;
+        if (result.status === 401 || result.status === 403) {
+          setKeys(loginKey.username, loginKey.passwd, loginKey.url, false);
+          m.route.set('/');
+        } else if (result.status === 0) {
+          console.error('[RS] Retroshare-jsonapi not available.');
+        } else {
+          console.error('[RS] HTTP error:', result.status, result.statusText);
+        }
+        try {
+          callback(result, false);
+        } catch (e) {
+          console.error('[RS] Error in error callback for path:', path, e);
+        }
       }
       return result;
     })
     .catch(function (e) {
-      callback(e, false);
-      console.error('Error: While sending request for path:', path, '\ninfo:', e);
-      m.route.set('/');
+      connectionState.status = false;
+      try {
+        callback(e, false);
+      } catch (cbErr) {
+        // console.error('[RS] Error in catch callback for path:', path, cbErr);
+      }
+      console.error('[RS] Error: While sending request for path:', path, '\ninfo:', e);
     });
 }
 
@@ -176,10 +215,10 @@ const eventQueue = {
         //                #define RS_CHAT_TYPE_PUBLIC  1
         //                #define RS_CHAT_TYPE_PRIVATE 2
 
-        2: (chatId) => chatId.distant_chat_id, // distant chat (initiate? -> todo accept)
-        //                #define RS_CHAT_TYPE_LOBBY   3
-        3: (chatId) => chatId.lobby_id.xstr64, // lobby_id
-        //                #define RS_CHAT_TYPE_DISTANT 4
+        1: (cid) => hexId(cid),
+        2: (cid) => hexId(cid),
+        3: (cid) => hexId(cid),
+        4: (cid) => hexId(cid),
       },
       messages: {},
       chatMessages: (chatId, owner, action) => {
@@ -195,25 +234,36 @@ const eventQueue = {
             )
           )
         ) {
-          console.info('unknown chat event', chatId);
+          if (chatId) {
+            // Silent match
+          }
         }
       },
-      handler: (event, owner) =>
-        owner.chatMessages(event.mChatMessage.chat_id, owner, (r) => {
-          console.info('adding chat', r, event.mChatMessage);
-          r.push(event.mChatMessage);
-          owner.notify(event.mChatMessage);
-        }),
-      notify: () => {},
+      handler: (event, owner) => {
+        if (event && event.mChatMessage && event.mChatMessage.chat_id) {
+          owner.chatMessages(event.mChatMessage.chat_id, owner, (r) => {
+            r.push(event.mChatMessage);
+            owner.notify(event.mChatMessage);
+          });
+        } else if (event && event.mCid) {
+          // Administrative chat event (e.g. lobby info change, peer join/leave)
+          // Silent for now to avoid console spam, as actual messages use mChatMessage
+        }
+      },
+      notify: () => { },
     },
     [RsEventsType.GXS_CIRCLES]: {
       // Circles (ignore in the meantime)
-      handler: (event, owner) => {},
+      handler: (event, owner) => { },
+    },
+    [RsEventsType.SHARED_DIRECTORIES]: {
+      // Deprecated/Administrative (ignore quietly)
+      handler: (event, owner) => { },
     },
   },
   handler: (event) => {
     if (!deeperIfExist(eventQueue.events, event.mType, (owner) => owner.handler(event, owner))) {
-      console.info('unhandled event', event);
+      // Ignore unhandled events silently
     }
   },
 };
@@ -221,20 +271,71 @@ const eventQueue = {
 const userList = {
   users: [],
   userMap: {},
+  pendingIds: new Set(),
+  fetchTimer: null,
+
+  triggerFetch: () => {
+    if (userList.fetchTimer) return;
+    userList.fetchTimer = setTimeout(() => {
+      userList.fetchTimer = null;
+      if (userList.pendingIds.size === 0) return;
+
+      const ids = Array.from(userList.pendingIds);
+      userList.pendingIds.clear();
+
+      userList.fetchBulk(ids);
+    }, 1000);
+  },
+
+  fetchBulk: (ids) => {
+    // Chunk requests to avoid too large payloads if necessary, but for now 100 is safe
+    const chunkSize = 100;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      rsJsonApiRequest('/rsIdentity/getIdentitiesInfo', { ids: chunk }, (data, success) => {
+        if (success && data.idsInfo) {
+          data.idsInfo.forEach((info) => {
+            const gid = info.mMeta && info.mMeta.mGroupId;
+            if (gid) {
+              userList.userMap[gid] = {
+                name: info.mMeta.mGroupName,
+                isContact: info.mIsAContact,
+              };
+            }
+          });
+          m.redraw();
+        }
+      });
+    }
+  },
+
   loadUsers: () => {
     rsJsonApiRequest('/rsIdentity/getIdentitiesSummaries', {}, (list) => {
-      if (list !== undefined) {
-        console.info('loading ' + list.ids.length + ' users ...');
+      if (list !== undefined && list.ids) {
         userList.users = list.ids;
         userList.userMap = list.ids.reduce((a, c) => {
-          a[c.mGroupId] = c.mGroupName;
+          a[c.mGroupId] = { name: c.mGroupName, isContact: false };
           return a;
         }, {});
+
+        // Fetch contact status and details in bulk immediately
+        userList.fetchBulk(list.ids.map((u) => u.mGroupId));
       }
     });
   },
   username: (id) => {
-    return userList.userMap[id] || id;
+    if (!id) return '';
+    const entry = userList.userMap[id];
+    const name = typeof entry === 'object' ? entry.name : entry;
+
+    if (!name && id.length > 10) {
+      if (!userList.pendingIds.has(id)) {
+        userList.pendingIds.add(id);
+        userList.triggerFetch();
+      }
+      return id;
+    }
+    return name || id;
   },
 };
 
@@ -251,70 +352,96 @@ const userList = {
 function startEventQueue(
   info,
   loginHeader = {},
-  displayAuthError = () => {},
-  displayErrorMessage = () => {},
-  successful = () => {}
+  displayAuthError = () => { },
+  displayErrorMessage = () => { },
+  successful = () => { }
 ) {
-  return rsJsonApiRequest(
-    '/rsEvents/registerEventsHandler',
-    {},
-    (data, success) => {
-      if (success) {
-        // unused
-      } else if (data.status === 401) {
+  const xhr = new window.XMLHttpRequest();
+  let lastIndex = 0;
+  xhr.open('POST', loginKey.url + '/rsEvents/registerEventsHandler', true);
+
+  // Set headers for authentication
+  const headers = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    ...loginHeader,
+  };
+
+  if (loginKey.isVerified && !headers['Authorization']) {
+    if (loginKey.username && loginKey.passwd) {
+      headers['Authorization'] = 'Basic ' + btoa(loginKey.username + ':' + loginKey.passwd);
+    }
+  }
+
+  Object.keys(headers).forEach((key) => {
+    xhr.setRequestHeader(key, headers[key]);
+  });
+
+  xhr.onreadystatechange = () => {
+    if (xhr.readyState === 4) {
+      if (xhr.status === 401) {
         displayAuthError('Incorrect login/password.');
-      } else if (data.status === 0) {
-        displayErrorMessage([
-          'Retroshare-jsonapi not available.',
-          m('br'),
-          'Please fix host and/or port.',
-        ]);
-      } else {
-        displayErrorMessage('Login failed: HTTP ' + data.status + ' ' + data.statusText);
       }
-    },
-    true,
-    loginHeader,
-    JSON.parse,
-    JSON.stringify,
-    (xhr, args, url) => {
-      let lastIndex = 0;
-      xhr.onprogress = (ev) => {
-        const currIndex = xhr.responseText.length;
-        if (currIndex > lastIndex) {
-          const parts = xhr.responseText.substring(lastIndex, currIndex);
-          lastIndex = currIndex;
-          parts
-            .trim()
-            .split('\n\n')
-            .filter((e) => e.startsWith('data: {'))
-            .map((e) => e.substr(6))
-            .map(JSON.parse)
-            .forEach((data) => {
+    }
+  };
+
+  xhr.onprogress = (ev) => {
+    const currIndex = xhr.responseText.length;
+    if (currIndex > lastIndex) {
+      const parts = xhr.responseText.substring(lastIndex, currIndex);
+      lastIndex = currIndex;
+      parts
+        .trim()
+        .split('\n\n')
+        .filter((e) => e.trim().length > 0)
+        .forEach((e) => {
+          if (e.startsWith('data: {')) {
+            try {
+              const data = JSON.parse(e.substr(6));
               if (Object.prototype.hasOwnProperty.call(data, 'retval')) {
-                console.info(
-                  info + ' [' + data.retval.errorCategory + '] ' + data.retval.errorMessage
-                );
-                data.retval.errorNumber === 0
-                  ? successful()
-                  : displayErrorMessage(
-                      `${info} failed: [${data.retval.errorCategory}] ${data.retval.errorMessage}`
-                    );
+                if (data.retval.errorNumber !== 0) {
+                  displayErrorMessage(
+                    `${info} failed: [${data.retval.errorCategory}] ${data.retval.errorMessage}`
+                  );
+                } else {
+                  successful();
+                }
               } else if (Object.prototype.hasOwnProperty.call(data, 'event')) {
                 data.event.queueSize = currIndex;
-                eventQueue.handler(data.event);
+                try {
+                  eventQueue.handler(data.event);
+                } catch (err) {
+                  console.error('[RS] Error in event handler:', err, data.event);
+                }
               }
-            });
-          if (currIndex > 1e5) {
-            // max 100 kB eventQueue
-            startEventQueue('restart queue');
-            xhr.abort();
+            } catch (err) {
+              console.error('[RS] JSON parse error for part:', e, err);
+            }
           }
-        }
-      };
-      return xhr;
+        });
+      if (currIndex > 1e6) {
+        // max 1 MB eventQueue
+        startEventQueue('restart queue');
+        xhr.abort();
+      }
     }
-  );
+  };
+
+  xhr.onload = () => { };
+
+  xhr.onerror = (err) => {
+    console.error('[RS] Event Queue XHR error occurred:', err);
+    // Retry after 5 seconds to avoid silent event loss
+    setTimeout(() => {
+      console.log('[RS] Retrying event queue connection...');
+      startEventQueue(info, loginHeader, displayAuthError, displayErrorMessage, successful);
+    }, 5000);
+  };
+
+  // We need to send an eventType to registerEventsHandler
+  // 0 means all events
+  xhr.send(JSON.stringify({ eventType: 0 }));
+  return xhr;
 }
 
 function logon(loginHeader, displayAuthError, displayErrorMessage, successful) {
@@ -333,8 +460,32 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+function hexId(id) {
+  if (!id) return '';
+  if (typeof id === 'string') return id;
+  if (typeof id === 'number') return String(id);
+  if (typeof id === 'object') {
+    // 1. Check for xstr64 (64-bit wrapped ID)
+    if (id.xstr64 && id.xstr64 !== '0') return id.xstr64;
+
+    // 2. Search for any hex string of appropriate length (128-bit or 64-bit)
+    const keys = Object.keys(id);
+    for (let i = 0; i < keys.length; i++) {
+      const val = id[keys[i]];
+      if (typeof val === 'string' && val.length >= 16 && val !== '00000000000000000000000000000000') return val;
+      // Search deeper for nested xstr64
+      if (val && typeof val === 'object' && val.xstr64 && val.xstr64 !== '0') return val.xstr64;
+    }
+    // 3. Last resort fallbacks
+    if (id.xstr64 !== undefined) return String(id.xstr64);
+  }
+  return String(id);
+}
+
 module.exports = {
   rsJsonApiRequest,
+  idToHex: hexId,
+  connectionState,
   setKeys,
   setBackgroundTask,
   logon,
@@ -343,4 +494,5 @@ module.exports = {
   userList,
   loginKey,
   formatBytes,
+  logout,
 };

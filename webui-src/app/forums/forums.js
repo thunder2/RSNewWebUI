@@ -12,16 +12,18 @@ const getForums = {
   MyForums: [],
   async load() {
     const res = await rs.rsJsonApiRequest('/rsgxsforums/getForumsSummaries');
-    getForums.All = res.body.forums;
-    getForums.PopularForums = getForums.All;
-    getForums.SubscribedForums = getForums.All.filter(
-      (forum) =>
-        forum.mSubscribeFlags === util.GROUP_SUBSCRIBE_SUBSCRIBED ||
-        forum.mSubscribeFlags === util.GROUP_MY_FORUM
-    );
-    getForums.MyForums = getForums.All.filter(
-      (forum) => forum.mSubscribeFlags === util.GROUP_MY_FORUM
-    );
+    if (res && res.body && res.body.forums) {
+      getForums.All = res.body.forums;
+      getForums.PopularForums = getForums.All;
+      getForums.SubscribedForums = getForums.All.filter(
+        (forum) =>
+          forum.mSubscribeFlags === util.GROUP_SUBSCRIBE_SUBSCRIBED ||
+          forum.mSubscribeFlags === util.GROUP_MY_FORUM
+      );
+      getForums.MyForums = getForums.All.filter(
+        (forum) => forum.mSubscribeFlags === util.GROUP_MY_FORUM
+      );
+    }
   },
 };
 const sections = {
@@ -37,7 +39,7 @@ const Layout = () => {
   return {
     oninit: () => {
       rs.setBackgroundTask(getForums.load, 5000, () => {
-        // return m.route.get() === '/files/files';
+        return m.route.get().includes('/forums');
       });
       peopleUtil.ownIds((data) => {
         ownId = data;
@@ -52,6 +54,7 @@ const Layout = () => {
     view: (vnode) =>
       m('.widget', [
         m('.top-heading', [
+          vnode.attrs.pathInfo.tab === 'MyForums' &&
           m(
             'button',
             {
@@ -71,14 +74,14 @@ const Layout = () => {
         ]),
         Object.prototype.hasOwnProperty.call(vnode.attrs.pathInfo, 'mMsgId') // thread's view
           ? m(viewUtil.ThreadView, {
-              msgId: vnode.attrs.pathInfo.mMsgId,
-              forumId: vnode.attrs.pathInfo.mGroupId,
-            })
+            msgId: vnode.attrs.pathInfo.mMsgId,
+            forumId: vnode.attrs.pathInfo.mGroupId,
+          })
           : Object.prototype.hasOwnProperty.call(vnode.attrs.pathInfo, 'mGroupId') // Forum's view
-          ? m(viewUtil.ForumView, {
+            ? m(viewUtil.ForumView, {
               id: vnode.attrs.pathInfo.mGroupId,
             })
-          : m(sections[vnode.attrs.pathInfo.tab], {
+            : m(sections[vnode.attrs.pathInfo.tab], {
               list: getForums[vnode.attrs.pathInfo.tab],
             }),
       ]),

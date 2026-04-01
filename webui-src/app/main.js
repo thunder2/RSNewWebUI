@@ -1,6 +1,7 @@
 const m = require('mithril');
 
 const login = require('login');
+const rs = require('rswebui');
 const home = require('home');
 const network = require('network/network');
 const people = require('people/people_resolver');
@@ -36,24 +37,65 @@ const navbar = () => {
         },
         [
           m('.nav-menu__logo', [
-            m('img', {
-              src: 'images/retroshare.svg',
-              alt: 'retroshare_icon',
-            }),
-            m('h5', 'Retroshare'),
+            m(
+              '.logo-container',
+              {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  marginRight: '10px',
+                },
+              },
+              [
+                m('img', {
+                  src: 'images/retroshare.svg',
+                  alt: 'retroshare_icon',
+                }),
+                m('i.fas.fa-circle', {
+                  style: {
+                    color: rs.connectionState.status ? '#2ecc71' : '#e74c3c',
+                    fontSize: '0.6em',
+                    marginTop: '5px',
+                    transition: 'color 0.3s ease',
+                  },
+                  title: rs.connectionState.status ? 'Connected to RetroShare Core' : 'Connection Lost',
+                }),
+                m('span.webui-version', { style: { fontSize: '0.7em', marginTop: '3px', color: '#888' } }, 'v131'),
+                m('i.fas.fa-sync-alt.refresh-icon', {
+                  style: { fontSize: '0.8em', marginTop: '2px', cursor: 'pointer', color: '#888' },
+                  onclick: () => window.location.reload(true),
+                  title: 'Force reload application',
+                }),
+              ]
+            ),
+            m('.nav-menu__logo-text', [
+              m('h5', 'RetroShare'),
+            ]),
           ]),
           m('.nav-menu__box', [
-            Object.keys(vnode.attrs.links).map((linkName, i) => {
+            Object.keys(vnode.attrs.links).map((linkName) => {
               const active = m.route.get().split('/')[1] === linkName;
               return m(
                 m.route.Link,
                 {
                   href: vnode.attrs.links[linkName],
-                  class: 'item' + (active ? ' item-selected' : ''),
+                  class: (active ? 'active-link' : '') + ' item',
                 },
-                [navIcon[linkName], m('p', linkName)]
+                [
+                  navIcon[linkName],
+                  m('span', linkName.charAt(0).toUpperCase() + linkName.slice(1)),
+                ]
               );
             }),
+            m(
+              'a.logout-link.item',
+              {
+                onclick: () => rs.logout(),
+                style: { marginTop: 'auto', cursor: 'pointer' },
+              },
+              [m('i.fas.fa-sign-out-alt'), m('span', 'Logout')]
+            ),
             m(
               'button.toggle-nav',
               {
@@ -157,3 +199,13 @@ m.route(document.getElementById('main'), '/', {
     render: (v) => m(Layout, m(config, v.attrs)),
   },
 });
+
+// v51 architectural fix: ensure event queue starts on direct route refresh
+if (rs.loginKey.isVerified && rs.loginKey.username && rs.loginKey.passwd) {
+  rs.logon(
+    { Authorization: `Basic ${btoa(`${rs.loginKey.username}:${rs.loginKey.passwd}`)}` },
+    () => { }, // displayAuthError
+    () => { }, // displayErrorMessage
+    () => { }
+  );
+}
